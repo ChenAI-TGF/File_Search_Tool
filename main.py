@@ -38,6 +38,9 @@ class FileSearchApp:
         self.manager = Manager()  # 用于创建跨进程共享对象
         self.stop_event = self.manager.Event()  # 改用Manager创建Event
         
+        # 屏蔽关键词设置
+        self.block_keywords = self.manager.list()  # 用于跨进程共享的屏蔽关键词列表
+        
         # 文件类型筛选状态（改为：只搜索选中的类型）
         self.category_vars = {}  # 存储类别勾选状态
         self.extension_vars = {}  # 存储扩展名勾选状态
@@ -64,11 +67,15 @@ class FileSearchApp:
         main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # 左侧：文件类型筛选面板（功能改为只搜索选中类型）
-        filter_frame = ttk.LabelFrame(main_paned, text="文件类型筛选（只搜索选中类型）", padding="10")
-        main_paned.add(filter_frame, weight=1)
+        # 左侧：文件类型筛选和关键词屏蔽面板
+        left_container = ttk.Frame(main_paned)
+        main_paned.add(left_container, weight=1)
         
-        # 筛选面板滚动区域 - 定义为类属性
+        # 文件类型筛选面板
+        filter_frame = ttk.LabelFrame(left_container, text="文件类型筛选（只搜索选中类型）", padding="10")
+        filter_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # 筛选面板滚动区域
         self.filter_canvas = tk.Canvas(filter_frame)
         self.filter_scrollbar = ttk.Scrollbar(filter_frame, orient="vertical", command=self.filter_canvas.yview)
         self.filter_scrollable_frame = ttk.Frame(self.filter_canvas)
@@ -118,6 +125,21 @@ class FileSearchApp:
             text="添加自定义扩展名", 
             command=self.add_custom_extension
         ).pack(pady=10, fill=tk.X)
+        
+        # 关键词屏蔽面板
+        block_frame = ttk.LabelFrame(left_container, text="文件夹屏蔽关键词（完全跳过文件夹及其子文件夹）", padding="10")
+        block_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 屏蔽关键词列表
+        self.block_listbox = tk.Listbox(block_frame, selectmode=tk.SINGLE, height=6)
+        self.block_listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        
+        # 屏蔽关键词操作按钮
+        block_btn_frame = ttk.Frame(block_frame)
+        block_btn_frame.pack(fill=tk.X)
+        
+        ttk.Button(block_btn_frame, text="添加屏蔽关键词", command=self.add_block_keyword).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        ttk.Button(block_btn_frame, text="删除选中关键词", command=self.remove_block_keyword).pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
         
         # 右侧：主功能区
         right_frame = ttk.Frame(main_paned)
@@ -190,13 +212,18 @@ class FileSearchApp:
         self.result_display.tag_configure("linenum", foreground="green", font=("SimHei", 10))
         self.result_display.tag_configure("match", background="yellow")
         self.result_display.tag_configure("separator", foreground="gray")
+        self.result_display.tag_configure("blocked", foreground="red", font=("SimHei", 10, "italic"))
+        self.result_display.tag_configure("info", foreground="purple", font=("SimHei", 10, "bold"))  # 新增：信息提示样式
         
         # 统计信息框架
         stats_frame = ttk.Frame(right_frame, padding="10")
         stats_frame.pack(fill=tk.X)
         
-        self.stats_label = ttk.Label(stats_frame, text="文件总数: 0 | 已处理: 0 | 匹配: 0")
+        self.stats_label = ttk.Label(stats_frame, text="文件总数: 0 | 已处理: 0 | 匹配: 0 | 跳过文件夹: 0")
         self.stats_label.pack(anchor=tk.W)
+        
+        # 被屏蔽文件夹计数
+        self.blocked_folders_count = 0
 
     def init_file_type_filters(self):
         """初始化文件类型筛选状态（默认不选中任何类型）"""
@@ -275,6 +302,44 @@ class FileSearchApp:
         
         messagebox.showinfo("成功", f"已添加自定义扩展名 {ext}")
 
+    def add_block_keyword(self):
+        """添加屏蔽关键词"""
+        keyword = simpledialog.askstring("添加屏蔽关键词", "请输入要屏蔽的文件夹关键词:")
+        if not keyword:
+            return
+            
+        keyword = keyword.strip()
+        if not keyword:
+            messagebox.showwarning("警告", "关键词不能为空")
+            return
+            
+        # 检查是否已存在
+        if keyword in self.block_keywords:
+            messagebox.showinfo("提示", f"关键词 '{keyword}' 已存在")
+            return
+            
+        # 添加到列表
+        self.block_keywords.append(keyword)
+        self.update_block_listbox()
+
+    def remove_block_keyword(self):
+        """删除选中的屏蔽关键词"""
+        selected = self.block_listbox.curselection()
+        if not selected:
+            messagebox.showwarning("警告", "请先选择要删除的关键词")
+            return
+            
+        index = selected[0]
+        if 0 <= index < len(self.block_keywords):
+            del self.block_keywords[index]
+            self.update_block_listbox()
+
+    def update_block_listbox(self):
+        """更新屏蔽关键词列表框"""
+        self.block_listbox.delete(0, tk.END)
+        for keyword in self.block_keywords:
+            self.block_listbox.insert(tk.END, keyword)
+
     def browse_path(self):
         path = filedialog.askdirectory()
         if path:
@@ -313,6 +378,7 @@ class FileSearchApp:
         self.total_files = 0
         self.processed_files = 0
         self.matched_files = 0
+        self.blocked_folders_count = 0
         self.current_folder_var.set("无")
         self.update_stats()
         
@@ -336,6 +402,17 @@ class FileSearchApp:
             self.stop_event.set()
             self.status_label.config(text="正在停止搜索...")
 
+    def is_folder_blocked(self, folder_path):
+        """检查文件夹是否应该被屏蔽"""
+        if not self.block_keywords:
+            return False
+            
+        folder_name = os.path.basename(folder_path)
+        for keyword in self.block_keywords:
+            if keyword.lower() in folder_name.lower():
+                return True
+        return False
+
     def perform_search(self, root_path, keyword, search_type):
         try:
             # 阶段1: 扫描所有文件并过滤（只保留选中类型）
@@ -345,10 +422,18 @@ class FileSearchApp:
             all_files = []
             last_reported_dir = None  # 跟踪上一次报告的目录
             
-            for dirpath, _, filenames in os.walk(root_path):
+            # 使用os.walk遍历目录，通过修改dirs列表来控制是否遍历子目录
+            for dirpath, dirs, filenames in os.walk(root_path):
                 if self.stop_event.is_set():
                     self.progress_queue.put(("done", "搜索已停止"))
                     return
+                    
+                # 检查当前文件夹是否需要被屏蔽
+                if self.is_folder_blocked(dirpath):
+                    self.progress_queue.put(("blocked", dirpath))
+                    # 清空dirs列表，这样os.walk就不会遍历该文件夹下的任何子目录
+                    dirs[:] = []
+                    continue
                     
                 # 报告当前处理的文件夹
                 if dirpath != last_reported_dir:
@@ -371,8 +456,10 @@ class FileSearchApp:
             self.progress_queue.put(("total_files", self.total_files))
             self.progress_queue.put(("stage", "扫描文件并过滤完成", 100))
             
+            # 情况1：没有找到任何符合选中类型的文件
             if self.total_files == 0:
-                self.progress_queue.put(("done", "未找到符合条件的文件类型"))
+                # 明确提示未找到选中类型的文件
+                self.progress_queue.put(("done", f"未找到任何符合选中类型的文件（{', '.join(self.included_extensions)}）"))
                 return
                 
             # 阶段2: 搜索文件
@@ -406,17 +493,33 @@ class FileSearchApp:
                     results.append(pool.apply_async(search_func, args=(chunk,)))
                 
                 # 收集结果
+                matched_files = []
                 for result in results:
                     matched_in_chunk = result.get()
-                    for file_path, matches in matched_in_chunk:
-                        self.result_queue.put((file_path, matches))
+                    matched_files.extend(matched_in_chunk)
                     
                     if self.stop_event.is_set():
                         pool.terminate()
                         self.progress_queue.put(("done", "搜索已停止"))
                         return
             
-            self.progress_queue.put(("done", "搜索完成"))
+            # 情况2：找到符合类型的文件，但没有匹配内容
+            if not matched_files:
+                search_target = "文件名" if search_type == "name" else "文件内容"
+                self.progress_queue.put(
+                    ("done", 
+                     f"共找到 {self.total_files} 个符合选中类型的文件，但未发现包含关键词「{keyword}」的{search_target}")
+                )
+                # 将匹配结果发送（实际为空）
+                for file_path, matches in matched_files:
+                    self.result_queue.put((file_path, matches))
+                return
+            
+            # 情况3：有匹配结果
+            for file_path, matches in matched_files:
+                self.result_queue.put((file_path, matches))
+            
+            self.progress_queue.put(("done", f"搜索完成，共找到 {len(matched_files)} 个匹配结果"))
             
         except Exception as e:
             self.progress_queue.put(("error", str(e)))
@@ -442,11 +545,22 @@ class FileSearchApp:
                 elif item[0] == "folder":
                     # 更新当前文件夹显示
                     self.current_folder_var.set(item[1])
+                elif item[0] == "blocked":
+                    # 记录被屏蔽的文件夹
+                    self.blocked_folders_count += 1
+                    self.update_stats()
+                    # 在结果区域显示被屏蔽的文件夹
+                    self.result_display.insert(tk.END, f"已跳过屏蔽文件夹及其所有子文件夹: {item[1]}\n", "blocked")
+                    self.result_display.see(tk.END)
                 elif item[0] == "total_files":
                     self.total_files = item[1]
                     self.update_stats()
                 elif item[0] == "done":
+                    # 显示最终状态信息
                     self.status_label.config(text=item[1])
+                    # 在结果区域也显示最终信息
+                    self.result_display.insert(tk.END, f"\n{'-'*50}\n", "separator")
+                    self.result_display.insert(tk.END, f"{item[1]}\n", "info")
                     self.is_searching = False
                 elif item[0] == "error":
                     messagebox.showerror("错误", f"搜索过程中发生错误: {item[1]}")
@@ -506,7 +620,7 @@ class FileSearchApp:
 
     def update_stats(self):
         self.stats_label.config(
-            text=f"文件总数: {self.total_files} | 已处理: {self.processed_files} | 匹配: {self.matched_files}"
+            text=f"文件总数: {self.total_files} | 已处理: {self.processed_files} | 匹配: {self.matched_files} | 跳过文件夹: {self.blocked_folders_count}"
         )
 
 # 多进程辅助函数 - 搜索文件名
