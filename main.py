@@ -144,6 +144,15 @@ class FileSearchApp:
         ttk.Button(search_frame, text="开始搜索", command=self.start_search).pack(side=tk.LEFT, padx=5)
         ttk.Button(search_frame, text="停止搜索", command=self.stop_search).pack(side=tk.LEFT, padx=5)
         
+        # 当前文件夹显示框架
+        folder_frame = ttk.Frame(right_frame, padding="10")
+        folder_frame.pack(fill=tk.X)
+        
+        ttk.Label(folder_frame, text="当前处理文件夹:").pack(side=tk.LEFT, padx=5)
+        self.current_folder_var = tk.StringVar(value="无")
+        self.current_folder_label = ttk.Label(folder_frame, textvariable=self.current_folder_var, wraplength=800)
+        self.current_folder_label.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
         # 进度框架
         progress_frame = ttk.Frame(right_frame, padding="10")
         progress_frame.pack(fill=tk.X)
@@ -304,6 +313,7 @@ class FileSearchApp:
         self.total_files = 0
         self.processed_files = 0
         self.matched_files = 0
+        self.current_folder_var.set("无")
         self.update_stats()
         
         # 创建队列
@@ -333,16 +343,23 @@ class FileSearchApp:
             
             # 获取所有文件列表
             all_files = []
+            last_reported_dir = None  # 跟踪上一次报告的目录
+            
             for dirpath, _, filenames in os.walk(root_path):
                 if self.stop_event.is_set():
                     self.progress_queue.put(("done", "搜索已停止"))
                     return
                     
+                # 报告当前处理的文件夹
+                if dirpath != last_reported_dir:
+                    self.progress_queue.put(("folder", dirpath))
+                    last_reported_dir = dirpath
+                    
                 for filename in filenames:
                     file_path = os.path.join(dirpath, filename)
                     # 检查文件扩展名是否在选中的类型中
                     ext = os.path.splitext(filename)[1].lower()
-                    if ext in self.included_extensions:  # 核心逻辑变更：从排除变为包含
+                    if ext in self.included_extensions:  # 核心逻辑：只包含选中类型
                         all_files.append(file_path)
                 
                 # 更新进度
@@ -422,6 +439,9 @@ class FileSearchApp:
                     self.overall_progress["value"] = overall_progress
                     self.status_label.config(text=f"正在处理: {item[2]}")
                     self.update_stats()
+                elif item[0] == "folder":
+                    # 更新当前文件夹显示
+                    self.current_folder_var.set(item[1])
                 elif item[0] == "total_files":
                     self.total_files = item[1]
                     self.update_stats()
@@ -493,10 +513,18 @@ class FileSearchApp:
 def search_filename(files, keyword, stop_event, progress_queue):
     matched = []
     pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+    last_reported_dir = None  # 跟踪上一次报告的目录
     
     for i, file_path in enumerate(files):
         if stop_event.is_set():
             return []
+            
+        # 获取当前文件所在目录
+        current_dir = os.path.dirname(file_path)
+        # 报告当前处理的文件夹（只在目录变化时报告）
+        if current_dir != last_reported_dir:
+            progress_queue.put(("folder", current_dir))
+            last_reported_dir = current_dir
             
         filename = os.path.basename(file_path)
         if pattern.search(filename):
@@ -512,10 +540,18 @@ def search_filename(files, keyword, stop_event, progress_queue):
 def search_file_content(files, keyword, stop_event, progress_queue):
     matched = []
     pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+    last_reported_dir = None  # 跟踪上一次报告的目录
     
     for i, file_path in enumerate(files):
         if stop_event.is_set():
             return []
+            
+        # 获取当前文件所在目录
+        current_dir = os.path.dirname(file_path)
+        # 报告当前处理的文件夹（只在目录变化时报告）
+        if current_dir != last_reported_dir:
+            progress_queue.put(("folder", current_dir))
+            last_reported_dir = current_dir
             
         try:
             # 尝试确定文件类型，跳过二进制文件
