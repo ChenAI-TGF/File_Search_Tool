@@ -16,14 +16,14 @@ File_Search_Tool 是一款功能强大的文件智能搜索工具，能够帮助
 
 ### 界面展示
 
-![程序主界面](screenshots\main_window.png)
+![程序主界面](\screenshots\main_window.png)
 
 ### 安装与使用
 
 1. 确保您的系统已安装Python 3.x
 2. 无需额外安装依赖库，使用Python标准库
 3. 下载项目代码
-4. 运行主程序：`python file_search_tool.py`
+4. 运行主程序：`python main.py`
 5. 使用步骤：
    - 选择搜索路径
    - 输入搜索关键词
@@ -62,7 +62,7 @@ File_Search_Tool is a powerful file intelligent search tool that helps you quick
 1. Ensure Python 3.x is installed on your system
 2. No additional libraries required, using Python standard libraries
 3. Download the project code
-4. Run the main program: `python file_search_tool.py`
+4. Run the main program: `python main.py`
 5. Usage steps:
    - Select the search path
    - Enter search keywords
