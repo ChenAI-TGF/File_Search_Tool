@@ -16,7 +16,7 @@ File_Search_Tool 是一款功能强大的文件智能搜索工具，能够帮助
 
 ### 界面展示
 
-![程序主界面](\screenshots\main_window.png)
+![程序主界面](.\screenshots\main_window.png)
 
 ### 安装与使用
 
