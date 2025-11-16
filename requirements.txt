@@ -1,0 +1,3 @@
+# 该文件搜索工具仅使用Python标准库，无需额外安装第三方包
+# 推荐使用Python 3.6及以上版本（支持f-string、multiprocessing等特性）
+python_version >= "3.6"
